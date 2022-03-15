@@ -14,13 +14,12 @@ inst = rm.open_resource(inst_list[int(index)])
 print('ID of connected instrument')
 print(inst.query('*IDN?'))
 
-channel = int(input('What channel are you using? [1-4]\n'))
-inst.write(':CHANnel'+str(channel)+':DISPlay ON')
+for i in range(1,4):
+    inst.write(':CHANnel'+str(i)+':DISPlay ON')
+inst.write(':CHANnel4:DISPlay OFF')
 
 # I think this gives the maximum number of data points...
 inst.write(':WAVeform:POINts:MODE MAX')
-# Selecting the chosen channel for data collection
-inst.write(':WAVeform:SOURce CHANnel'+str(channel))
 
 # Get waveform preamble
 '''
@@ -46,11 +45,6 @@ preamble_keys = ['format',
                  'yorigin',
                  'yreference']
 
-preamble_data = inst.query(':WAVeform:PREamble?').split(',')
-preamble_data[-1] = preamble_data[-1][:-1]
-preamble = dict(zip(preamble_keys, preamble_data))
-print(preamble)
-
 # Set output format
 inst.write(":WAVeform:FORMat WORD") # 16 bit WORD format... or BYTE for 8 bit format
 inst.write(":WAVeform:UNSigned 0") # Set signed integer
@@ -63,13 +57,21 @@ inst.write(':TIMebase:RANGe '+str(duration))
 inst.write(':SINGle')
 time.sleep(duration+1)
 
+preamble_data = inst.query(':WAVeform:PREamble?').split(',')
+preamble_data[-1] = preamble_data[-1][:-1]
+preamble = dict(zip(preamble_keys, preamble_data))
+print(preamble)
+
 # Calculate time values from preamble
 times = (np.arange(0,int(preamble['points'])) - int(preamble['xreference']))*float(preamble['xincrement']) + float(preamble['xorigin'])
-data = inst.query_binary_values(':WAVeform:SOURce CHANnel'+str(channel)+';DATA?', container=np.array, datatype='h', is_big_endian=False)
+data = []
+for channel in range(1,4):
+    data.append(inst.query_binary_values(':WAVeform:SOURce CHANnel'+str(channel)+';DATA?', container=np.array, datatype='h', is_big_endian=False))
 # h is signed WORD, H is unsigned WORD
 
 # Transform binary IEEE 488.2 data to actual values
-scaled_waveform_data = ((data - int(preamble['yreference'])) * float(preamble['yincrement'])) + float(preamble['yorigin'])
+def binary_to_float(data):
+    return ((data - int(preamble['yreference'])) * float(preamble['yincrement'])) + float(preamble['yorigin'])
 
 '''
 IEEE 488.2 Data types
@@ -79,5 +81,7 @@ NR3: Float always with exponent
 '''
 
 # Plot the data
-plt.plot(times, scaled_waveform_data)
+for i in range(3):
+    plt.plot(times, binary_to_float(data[i]), label='channel '+str(i+1), alpha=0.5)
+plt.legend()
 plt.show()
